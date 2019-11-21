@@ -54,7 +54,6 @@ impl<P> LookupTable<P>
             })
             .collect();
 
-
         // Construct overfull and underfull stack. These contain only indices into U
         let mut U_underfull = Vec::with_capacity(n);
         let mut U_overfull = Vec::with_capacity(n);
@@ -138,7 +137,7 @@ impl<P> LookupTable<P>
             .expect("Empty probabilities slice");
 
         while let Some(p_i) = p_iter.next() {
-            assert!(p_i > previous);
+            assert!(p_i >= previous);
             previous = p_i;
         }
     }
