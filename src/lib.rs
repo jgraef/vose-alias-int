@@ -4,13 +4,12 @@ use std::ops::{Add, Sub, Mul};
 use std::cmp::{Ordering, PartialOrd, Ord};
 use std::fmt::Debug;
 
-use num_traits::identities::zero;
 use num_traits::sign::Unsigned;
-
+use num_traits::FromPrimitive;
 
 
 pub struct LookupTable<P>
-    where P: Copy + Debug + Unsigned + Add<P> + Sub<P> + Mul<P> + Mul<usize, Output=P> + PartialOrd<P> + Ord
+    where P: Copy + Debug + Unsigned + Add<P> + Sub<P> + Mul<P> + FromPrimitive + PartialOrd<P> + Ord
 {
     /// The total probability - since we work with integers, this is not 1.0, but corresponds to
     /// a the probability 1.0
@@ -28,9 +27,9 @@ pub struct LookupTable<P>
 
 
 impl<P> LookupTable<P>
-    where P: Copy + Debug + Unsigned + Add<P> + Sub<P> + Mul<P> + Mul<usize, Output=P> + PartialOrd<P> + Ord
+    where P: Copy + Debug + Unsigned + Add<P> + Sub<P> + Mul<P> + FromPrimitive + PartialOrd<P> + Ord
 {
-    pub fn new<V: AsRef<[P]>>(p: V, T: P) -> Self {
+    pub fn new<V: AsRef<[P]>>(p: V) -> Self {
         // The algorithm was roughly taken from
         //
         // * https://en.wikipedia.org/wiki/Alias_method#Table_generation
@@ -38,17 +37,21 @@ impl<P> LookupTable<P>
         //
         // p - probabilities p_i. We will use this for U as well
         // T - total probability
-        // n - numbrt of probabilities
+        // n - number of probabilities
 
         let p = p.as_ref();
         let n = p.len();
 
         // Assert properties of input
-        Self::assert_input(p, T);
+        Self::assert_input(p);
 
-        // Construct scaled probabilities
+        // Construct scaled probabilities and total probability
+        let mut T = P::zero();
         let mut U: Vec<P> = p.iter()
-            .map(|p| p.mul(n))
+            .map(|p| {
+                T = T + *p;
+                p.mul(P::from_usize(n).expect("Can't convert n to P for normalization"))
+            })
             .collect();
 
 
@@ -56,8 +59,8 @@ impl<P> LookupTable<P>
         let mut U_underfull = Vec::with_capacity(n);
         let mut U_overfull = Vec::with_capacity(n);
 
-        for (i, p) in p.iter().enumerate() {
-            match p.cmp(&T) {
+        for (i, U_i) in U.iter().enumerate() {
+            match U_i.cmp(&T) {
                 Ordering::Equal => (),
                 Ordering::Greater => U_overfull.push(i),
                 Ordering::Less => U_underfull.push(i),
@@ -74,6 +77,8 @@ impl<P> LookupTable<P>
         K.resize_with(n, Default::default);
 
         while let (Some(i_u), Some(i_o)) = (U_underfull.pop(), U_overfull.pop()) {
+            //println!("i_u = {}, i_o = {}", i_u, i_o);
+
             // Alias overfull into underfull
             K[i_u] = i_o;
 
@@ -113,6 +118,9 @@ impl<P> LookupTable<P>
     /// Returns the index corresponding to the probability in the input `p`.
     ///
     pub fn sample(&self, x: usize, y: P) -> usize {
+        assert!(x < self.n);
+        assert!(y < self.T);
+
         let U_x = self.U[x];
         if y < U_x {
             x
@@ -124,14 +132,14 @@ impl<P> LookupTable<P>
         }
     }
 
-    fn assert_input(p: &[P], T: P) {
-        let mut last: P = zero();
-        let mut sum: P = zero();
-        for x in p {
-            assert!(*x > last);
-            last = *x;
-            sum = sum + *x;
+    fn assert_input(p: &[P]) {
+        let mut p_iter = p.iter().copied();
+        let mut previous = p_iter.next()
+            .expect("Empty probabilities slice");
+
+        while let Some(p_i) = p_iter.next() {
+            assert!(p_i > previous);
+            previous = p_i;
         }
-        assert_eq!(sum, T);
     }
 }
