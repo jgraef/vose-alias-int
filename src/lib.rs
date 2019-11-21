@@ -42,9 +42,6 @@ impl<P> LookupTable<P>
         let p = p.as_ref();
         let n = p.len();
 
-        // Assert properties of input
-        Self::assert_input(p);
-
         // Construct scaled probabilities and total probability
         let mut T = P::zero();
         let mut U: Vec<P> = p.iter()
@@ -65,15 +62,12 @@ impl<P> LookupTable<P>
                 Ordering::Less => U_underfull.push(i),
             }
         }
-        // I think this improves performance at the lookup phase
-        U_underfull.reverse();
 
         // Construct alias table
         // K - alias table - n entries initialized with
-        // NOTE: Entry 0 will never be aliased, since it will be exactly filled in the first
-        // iteration of the loop, therefore we can use K_x = 0 as "not aliased".
+        // NOTE: initialize with usize::MAX.
         let mut K: Vec<usize> = Vec::with_capacity(n);
-        K.resize_with(n, Default::default);
+        K.resize_with(n, || std::usize::MAX);
 
         while let (Some(i_u), Some(i_o)) = (U_underfull.pop(), U_overfull.pop()) {
             //println!("i_u = {}, i_o = {}", i_u, i_o);
@@ -92,7 +86,14 @@ impl<P> LookupTable<P>
             }
         }
 
-        assert!(U_underfull.is_empty() && U_overfull.is_empty());
+        // Both must be emtpy now
+        debug_assert!(U_underfull.is_empty() && U_overfull.is_empty());
+
+        // Entries that are "underfull" need an entry in the alias table
+        debug_assert!(U.iter().zip(K.iter()).all(|(U_i, K_i)| {
+            // Both must be true or both must be false.
+            (U_i < &T) == (K_i != &std::usize::MAX)
+        }));
 
         Self { T, n, K, U }
     }
@@ -126,19 +127,8 @@ impl<P> LookupTable<P>
         }
         else {
             let K_x = self.K[x];
-            assert_ne!(K_x, 0);
+            //assert_ne!(K_x, 0);
             K_x
-        }
-    }
-
-    fn assert_input(p: &[P]) {
-        let mut p_iter = p.iter().copied();
-        let mut previous = p_iter.next()
-            .expect("Empty probabilities slice");
-
-        while let Some(p_i) = p_iter.next() {
-            assert!(p_i >= previous);
-            previous = p_i;
         }
     }
 }
